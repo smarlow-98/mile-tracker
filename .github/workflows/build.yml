@@ -1,0 +1,66 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project
+        run: mkdir -p src && tar xJf MileTracker.tar.xz -C src
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Load signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::The SIGNING_KEY secret is missing. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          printf '%s\n' "$SIGNING_KEY" | sed -n '2,$p' | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/release.jks"
+          PASS=$(printf '%s\n' "$SIGNING_KEY" | head -n 1 | tr -d ' \r')
+          echo "::add-mask::$PASS"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: src/MileTracker
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Rename APK
+        run: cp src/MileTracker/app/build/outputs/apk/release/app-release.apk MileTracker-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MileTracker-APK
+          path: MileTracker-*.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Mile Tracker 1.0.${{ github.run_number }}
+          body: Download the APK below and install it on your phone.
+          files: MileTracker-*.apk
+          make_latest: true
