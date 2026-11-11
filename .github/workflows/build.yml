@@ -15,7 +15,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Unpack project
-        run: mkdir -p src && tar xJf MileTracker.tar.xz -C src
+        run: |
+          mkdir -p src && tar xJf MileTracker.tar.xz -C src
+          if [ -d overrides ]; then cp -r overrides/. src/MileTracker/; fi
 
       - uses: actions/setup-java@v4
         with:
